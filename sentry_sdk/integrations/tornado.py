@@ -22,6 +22,8 @@ from tornado.gen import coroutine
 
 from sentry_sdk._types import MYPY
 
+import asyncio
+
 if MYPY:
     from typing import Any
     from typing import Optional
@@ -59,12 +61,14 @@ class TornadoIntegration(Integration):
         if awaitable:
             # Starting Tornado 6 RequestHandler._execute method is a standard Python coroutine (async/await)
             # In that case our method should be a coroutine function too
-            async def sentry_execute_request_handler(self, *args, **kwargs):
+            @asyncio.coroutine
+            def sentry_execute_request_handler(self, *args, **kwargs):
                 # type: (Any, *Any, **Any) -> Any
                 hub = Hub.current
                 integration = hub.get_integration(TornadoIntegration)
                 if integration is None:
-                    return await old_execute(self, *args, **kwargs)
+                    result = yield from old_execute(self, *args, **kwargs)
+                    return result
 
                 weak_handler = weakref.ref(self)
 
@@ -72,7 +76,8 @@ class TornadoIntegration(Integration):
                     with hub.configure_scope() as scope:
                         scope.clear_breadcrumbs()
                         scope.add_event_processor(_make_event_processor(weak_handler))
-                    return await old_execute(self, *args, **kwargs)
+                    result = yield from old_execute(self, *args, **kwargs)
+                    return result
 
         else:
 

@@ -55,13 +55,16 @@ class AioHttpIntegration(Integration):
 
         old_handle = Application._handle
 
-        async def sentry_app_handle(self, request, *args, **kwargs):
+        @asyncio.coroutine
+        def sentry_app_handle(self, request, *args, **kwargs):
             # type: (Any, Request, *Any, **Any) -> Any
-            async def inner():
+            @asyncio.coroutine
+            def inner():
                 # type: () -> Any
                 hub = Hub.current
                 if hub.get_integration(AioHttpIntegration) is None:
-                    return await old_handle(self, request, *args, **kwargs)
+                    old_handle_response =  yield from old_handle(self, request, *args, **kwargs)
+                    return old_handle_response
 
                 weak_request = weakref.ref(request)
 
@@ -78,7 +81,7 @@ class AioHttpIntegration(Integration):
 
                     with hub.start_span(span):
                         try:
-                            response = await old_handle(self, request)
+                            response = yield from old_handle(self, request)
                         except HTTPException as e:
                             span.set_http_status(e.status_code)
                             raise
@@ -96,15 +99,17 @@ class AioHttpIntegration(Integration):
             # Explicitly wrap in task such that current contextvar context is
             # copied. Just doing `return await inner()` will leak scope data
             # between requests.
-            return await asyncio.get_event_loop().create_task(inner())
+            event_loop_response =  yield from asyncio.get_event_loop().create_task(inner())
+            return event_loop_response
 
         Application._handle = sentry_app_handle
 
         old_urldispatcher_resolve = UrlDispatcher.resolve
 
-        async def sentry_urldispatcher_resolve(self, request):
+        @asyncio.coroutine
+        def sentry_urldispatcher_resolve(self, request):
             # type: (UrlDispatcher, Request) -> AbstractMatchInfo
-            rv = await old_urldispatcher_resolve(self, request)
+            rv = yield from old_urldispatcher_resolve(self, request)
 
             name = None
 

@@ -70,20 +70,26 @@ class SentryAsgiMiddleware:
 
     def _run_asgi2(self, scope):
         # type: (Any) -> Any
-        async def inner(receive, send):
+        @asyncio.coroutine
+        def inner(receive, send):
             # type: (Any, Any) -> Any
-            return await self._run_app(scope, lambda: self.app(scope)(receive, send))
+            response = yield from self._run_app(scope, lambda: self.app(scope)(receive, send))
+            return response
 
         return inner
 
-    async def _run_asgi3(self, scope, receive, send):
+    @asyncio.coroutine
+    def _run_asgi3(self, scope, receive, send):
         # type: (Any, Any, Any) -> Any
-        return await self._run_app(scope, lambda: self.app(scope, receive, send))
+        response = yield from self._run_app(scope, lambda: self.app(scope, receive, send))
+        return response
 
-    async def _run_app(self, scope, callback):
+    @asyncio.coroutine
+    def _run_app(self, scope, callback):
         # type: (Any, Any) -> Any
         if _asgi_middleware_applied.get(False):
-            return await callback()
+            response = yield from callback()
+            return response
 
         _asgi_middleware_applied.set(True)
         try:
@@ -112,7 +118,8 @@ class SentryAsgiMiddleware:
                     # would have to wrap send(). That is a bit hard to do with
                     # the current abstraction over ASGI 2/3.
                     try:
-                        return await callback()
+                        response = yield from callback()
+                        return response
                     except Exception as exc:
                         _capture_exception(hub, exc)
                         raise exc from None

@@ -20,6 +20,8 @@ from sanic.handlers import ErrorHandler
 
 from sentry_sdk._types import MYPY
 
+import asyncio
+
 if MYPY:
     from typing import Any
     from typing import Callable
@@ -61,7 +63,8 @@ class SanicIntegration(Integration):
 
         old_handle_request = Sanic.handle_request
 
-        async def sentry_handle_request(self, request, *args, **kwargs):
+        @asyncio.coroutine
+        def sentry_handle_request(self, request, *args, **kwargs):
             # type: (Any, Request, *Any, **Any) -> Any
             hub = Hub.current
             if hub.get_integration(SanicIntegration) is None:
@@ -76,7 +79,7 @@ class SanicIntegration(Integration):
 
                 response = old_handle_request(self, request, *args, **kwargs)
                 if isawaitable(response):
-                    response = await response
+                    response = yield from response
 
                 return response
 
@@ -109,12 +112,13 @@ class SanicIntegration(Integration):
             if Hub.current.get_integration(SanicIntegration) is None:
                 return old_error_handler
 
-            async def sentry_wrapped_error_handler(request, exception):
+            @asyncio.coroutine
+            def sentry_wrapped_error_handler(request, exception):
                 # type: (Request, Exception) -> Any
                 try:
                     response = old_error_handler(request, exception)
                     if isawaitable(response):
-                        response = await response
+                        response = yield from response
                     return response
                 except Exception:
                     # Report errors that occur in Sanic error handler. These
